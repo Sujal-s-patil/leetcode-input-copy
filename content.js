@@ -3,6 +3,7 @@ const BUTTON_ID = "leetcode-input-copy-button";
 const TOOLBAR_SELECTOR = "#ide-top-btns";
 const VARIABLE_SELECTOR = "span.mtk11";
 const DESCRIPTION_SELECTOR = ".elfjS, .elfjs, [data-track-load='description_content']";
+let mountScheduled = false;
 
 init();
 
@@ -10,12 +11,25 @@ function init() {
   mountButton();
 
   const observer = new MutationObserver(() => {
-    mountButton();
+    scheduleMount();
   });
 
-  observer.observe(document.documentElement, {
+  const observerTarget = document.body || document.documentElement;
+  observer.observe(observerTarget, {
     childList: true,
     subtree: true,
+  });
+}
+
+function scheduleMount() {
+  if (mountScheduled) {
+    return;
+  }
+
+  mountScheduled = true;
+  requestAnimationFrame(() => {
+    mountScheduled = false;
+    mountButton();
   });
 }
 
@@ -108,7 +122,8 @@ async function collectClipboardText() {
 
   const inputValues = uniquePairs.map((pair) => pair.input);
   const outputValues = uniquePairs.map((pair) => pair.output);
-  return buildClipboardText(variableName, inputValues, outputValues);
+  const starterCode = extractStarterCode();
+  return buildClipboardText(starterCode, variableName, inputValues, outputValues);
 }
 
 async function findExtractionTarget() {
@@ -273,17 +288,61 @@ function parseExampleBlock(text) {
   };
 }
 
-function buildClipboardText(variableName, inputValues, outputValues) {
-  const formattedInputs = inputValues.map((value) => normalizeForCodeLiteral(value, true)).join(", ");
-  const formattedOutputs = outputValues.map((value) => normalizeForCodeLiteral(value, false)).join(", ");
+function buildClipboardText(starterCode, variableName, inputValues, outputValues) {
+  const formattedInputs = inputValues.map((value) => normalizeForCodeLiteral(value, true)).join(",");
+  const formattedOutputs = outputValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
 
-  return [
+  const sections = [];
+  if (starterCode) {
+    sections.push(starterCode);
+    sections.push("");
+  }
+
+  sections.push(...[
     `const a = [${formattedInputs}];`,
     `const b = [${formattedOutputs}];`,
     "",
     'const help = require("./concept/helper");',
     `help.singleValue(${variableName}, a, b);`,
-  ].join("\n");
+  ]);
+
+  return sections.join("\n");
+}
+
+function extractStarterCode() {
+  const editorLineContainers = Array.from(document.querySelectorAll(".monaco-editor .view-lines"));
+  if (editorLineContainers.length === 0) {
+    return "";
+  }
+
+  const bestContainer = editorLineContainers
+    .filter((container) => isElementVisible(container))
+    .sort((a, b) => b.querySelectorAll(".view-line").length - a.querySelectorAll(".view-line").length)[0];
+
+  if (!bestContainer) {
+    return "";
+  }
+
+  const lineElements = Array.from(bestContainer.querySelectorAll(".view-line"));
+  if (lineElements.length === 0) {
+    return "";
+  }
+
+  const lines = lineElements.map((lineElement) => {
+    const text = (lineElement.textContent || "").replace(/\u00a0/g, " ");
+    return text.replace(/\s+$/g, "");
+  });
+
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+function isElementVisible(element) {
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
 }
 
 function normalizeForCodeLiteral(value, stripAssignment) {
