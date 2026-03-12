@@ -147,7 +147,7 @@ async function waitForElement(selector, timeoutMs = 2500) {
   const startTime = Date.now();
 
   while (Date.now() - startTime < timeoutMs) {
-    const element = findFirstDeep(selector);
+    const element = document.querySelector(selector) || findFirstDeep(selector);
     if (element) {
       return element;
     }
