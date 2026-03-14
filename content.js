@@ -110,9 +110,7 @@ async function collectClipboardText() {
     throw new Error("span.mtk11 is empty.");
   }
 
-  const pairs = extractionTarget.blocks
-    .map((block) => parseExampleBlock(readVisibleText(block)))
-    .filter(Boolean);
+  const pairs = extractionTarget.blocks.flatMap((block) => parseExampleBlocks(readVisibleText(block)));
 
   const uniquePairs = dedupePairs(pairs);
 
@@ -122,8 +120,9 @@ async function collectClipboardText() {
 
   const inputValues = uniquePairs.map((pair) => pair.input);
   const outputValues = uniquePairs.map((pair) => pair.output);
+  const parsedInputs = parseInputExamples(inputValues);
   const starterCode = extractStarterCode();
-  return buildClipboardText(starterCode, variableName, inputValues, outputValues);
+  return buildClipboardText(starterCode, variableName, parsedInputs, outputValues);
 }
 
 async function findExtractionTarget() {
@@ -273,23 +272,25 @@ function normalizeText(text) {
   return text.replace(/\r\n/g, "\n").replace(/\u00a0/g, " ").trim();
 }
 
-function parseExampleBlock(text) {
+function parseExampleBlocks(text) {
   const normalized = normalizeText(text);
-  const inputMatch = normalized.match(/(?:^|\n)Input:\s*([\s\S]*?)(?=\nOutput:|$)/i);
-  const outputMatch = normalized.match(/(?:^|\n)Output:\s*([\s\S]*?)(?=\n[A-Z][A-Za-z ]*:|$)/i);
+  const pairs = [];
+  const pairPattern = /(?:^|\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
+  let match = pairPattern.exec(normalized);
 
-  if (!inputMatch || !outputMatch) {
-    return null;
+  while (match) {
+    pairs.push({
+      input: match[1].trim(),
+      output: match[2].trim(),
+    });
+
+    match = pairPattern.exec(normalized);
   }
 
-  return {
-    input: inputMatch[1].trim(),
-    output: outputMatch[1].trim(),
-  };
+  return pairs;
 }
 
-function buildClipboardText(starterCode, variableName, inputValues, outputValues) {
-  const formattedInputs = inputValues.map((value) => normalizeForCodeLiteral(value, true)).join(",");
+function buildClipboardText(starterCode, variableName, parsedInputs, outputValues) {
   const formattedOutputs = outputValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
 
   const sections = [];
@@ -298,15 +299,156 @@ function buildClipboardText(starterCode, variableName, inputValues, outputValues
     sections.push("");
   }
 
-  sections.push(...[
-    `const a = [${formattedInputs}];`,
-    `const b = [${formattedOutputs}];`,
-    "",
-    'const help = require("./concept/helper");',
-    `help.singleValue(${variableName}, a, b);`,
-  ]);
+  if (parsedInputs.mode === "twoValue") {
+    const formattedFirstInput = parsedInputs.firstValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
+    const formattedSecondInput = parsedInputs.secondValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
+
+    sections.push(...[
+      `const a = [${formattedFirstInput}];`,
+      `const b = [${formattedSecondInput}];`,
+      `const c = [${formattedOutputs}];`,
+      "",
+      'const help = require("./concept/helper");',
+      `help.twoValue(${variableName}, a, b,c);`,
+    ]);
+  } else {
+    const formattedInputs = parsedInputs.values.map((value) => normalizeForCodeLiteral(value, true)).join(",");
+
+    sections.push(...[
+      `const a = [${formattedInputs}];`,
+      `const b = [${formattedOutputs}];`,
+      "",
+      'const help = require("./concept/helper");',
+      `help.singleValue(${variableName}, a, b);`,
+    ]);
+  }
 
   return sections.join("\n");
+}
+
+function parseInputExamples(inputValues) {
+  const parsedExamples = inputValues.map((value) => parseNamedAssignments(value));
+  if (parsedExamples.some((example) => example === null)) {
+    return {
+      mode: "singleValue",
+      values: inputValues,
+    };
+  }
+
+  const firstExample = parsedExamples[0];
+  if (!firstExample || firstExample.length !== 2) {
+    return {
+      mode: "singleValue",
+      values: inputValues,
+    };
+  }
+
+  const [firstName, secondName] = firstExample.map((entry) => entry.name);
+  const firstValues = [];
+  const secondValues = [];
+
+  for (const example of parsedExamples) {
+    if (!example || example.length !== 2) {
+      return {
+        mode: "singleValue",
+        values: inputValues,
+      };
+    }
+
+    if (example[0].name !== firstName || example[1].name !== secondName) {
+      return {
+        mode: "singleValue",
+        values: inputValues,
+      };
+    }
+
+    firstValues.push(example[0].value);
+    secondValues.push(example[1].value);
+  }
+
+  return {
+    mode: "twoValue",
+    firstValues,
+    secondValues,
+  };
+}
+
+function parseNamedAssignments(text) {
+  const parts = splitTopLevelByComma(normalizeText(text));
+  if (parts.length === 0) {
+    return null;
+  }
+
+  const assignments = [];
+  for (const part of parts) {
+    const match = part.match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    if (!match) {
+      return null;
+    }
+
+    assignments.push({
+      name: match[1],
+      value: match[2].trim(),
+    });
+  }
+
+  return assignments;
+}
+
+function splitTopLevelByComma(text) {
+  const parts = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const prev = i > 0 ? text[i - 1] : "";
+
+    if (quote) {
+      current += char;
+      if (char === quote && prev !== "\\") {
+        quote = "";
+      }
+
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+
+    if (char === "(" || char === "[" || char === "{") {
+      depth += 1;
+      current += char;
+      continue;
+    }
+
+    if (char === ")" || char === "]" || char === "}") {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+
+    if (char === "," && depth === 0) {
+      if (current.trim()) {
+        parts.push(current.trim());
+      }
+
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts;
 }
 
 function extractStarterCode() {

@@ -23,6 +23,17 @@ const help = require("./concept/helper");
 help.singleValue(variableFromMtk11, a, b);
 ```
 
+For examples that use exactly two named inputs (for example `Input: num1 = "2", num2 = "3"`), the extension now generates:
+
+```js
+const a = ["2", "123"];
+const b = ["3", "456"];
+const c = ["6", "56088"];
+
+const help = require("./concept/helper");
+help.twoValue(variableFromMtk11, a, b,c);
+```
+
 The button is inserted to the right of the debugger controls and uses LeetCode's existing utility classes for styling.
 
 ## Load in Brave
