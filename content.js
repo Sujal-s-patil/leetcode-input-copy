@@ -3,7 +3,7 @@ const BUTTON_ID = "leetcode-input-copy-button";
 const TOOLBAR_SELECTOR = "#ide-top-btns";
 const VARIABLE_SELECTOR = "span.mtk11";
 const DESCRIPTION_SELECTOR = ".elfjS, .elfjs, [data-track-load='description_content']";
-const PAIR_PATTERN = /(?:^\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
+const PAIR_PATTERN = /(?:^|\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
 const ASSIGNMENT_PATTERN = /^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
 const PARAM_PATTERN = /@param\s*\{\s*TreeNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
 let mountScheduled = false;
