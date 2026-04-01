@@ -122,7 +122,8 @@ async function collectClipboardText() {
   const outputValues = uniquePairs.map((pair) => pair.output);
   const parsedInputs = parseInputExamples(inputValues);
   const starterCode = extractStarterCode();
-  return buildClipboardText(starterCode, variableName, parsedInputs, outputValues);
+  const treeMetadata = extractTreeMetadata(starterCode);
+  return buildClipboardText(starterCode, variableName, parsedInputs, outputValues, treeMetadata);
 }
 
 async function findExtractionTarget() {
@@ -290,8 +291,8 @@ function parseExampleBlocks(text) {
   return pairs;
 }
 
-function buildClipboardText(starterCode, variableName, parsedInputs, outputValues) {
-  const formattedOutputs = outputValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
+function buildClipboardText(starterCode, variableName, parsedInputs, outputValues, treeMetadata) {
+  const formattedOutputs = outputValues.map((value) => normalizeForCodeLiteral(value, false)).join(", ");
 
   const sections = [];
   if (starterCode) {
@@ -299,23 +300,99 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     sections.push("");
   }
 
-  if (parsedInputs.mode === "twoValue") {
-    const formattedFirstInput = parsedInputs.firstValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
-    const formattedSecondInput = parsedInputs.secondValues.map((value) => normalizeForCodeLiteral(value, false)).join(",");
+  if (parsedInputs.mode === "threeValue") {
+    const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
+      builderPrefix: "treeA",
+    });
+    const secondInputSeries = formatInputSeries(parsedInputs.secondValues, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.secondName),
+      builderPrefix: "treeB",
+    });
+    const thirdInputSeries = formatInputSeries(parsedInputs.thirdValues, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.thirdName),
+      builderPrefix: "treeC",
+    });
+
+    if (firstInputSeries.setupLines.length > 0 || secondInputSeries.setupLines.length > 0 || thirdInputSeries.setupLines.length > 0) {
+      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      sections.push(...firstInputSeries.setupLines, ...secondInputSeries.setupLines, ...thirdInputSeries.setupLines);
+      sections.push("");
+    }
 
     sections.push(...[
-      `const a = [${formattedFirstInput}];`,
-      `const b = [${formattedSecondInput}];`,
+      `const a = [${firstInputSeries.formattedValues}];`,
+      `const b = [${secondInputSeries.formattedValues}];`,
+      `const c = [${thirdInputSeries.formattedValues}];`,
+      `const d = [${formattedOutputs}];`,
+      "",
+      'const help = require("./concept/helper");',
+      `help.threeValue(${variableName}, a, b, c, d);`,
+    ]);
+  } else if (parsedInputs.mode === "twoValue") {
+    const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
+      builderPrefix: "treeA",
+    });
+    const secondInputSeries = formatInputSeries(parsedInputs.secondValues, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.secondName),
+      builderPrefix: "treeB",
+    });
+
+    if (firstInputSeries.setupLines.length > 0 || secondInputSeries.setupLines.length > 0) {
+      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      sections.push(...firstInputSeries.setupLines, ...secondInputSeries.setupLines);
+      sections.push("");
+    }
+
+    sections.push(...[
+      `const a = [${firstInputSeries.formattedValues}];`,
+      `const b = [${secondInputSeries.formattedValues}];`,
       `const c = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
       `help.twoValue(${variableName}, a, b,c);`,
     ]);
-  } else {
-    const formattedInputs = parsedInputs.values.map((value) => normalizeForCodeLiteral(value, true)).join(",");
+  } else if (parsedInputs.mode === "singleNamedValue") {
+    const singleInputSeries = formatInputSeries(parsedInputs.values, {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.name),
+      builderPrefix: "b",
+    });
+
+    if (singleInputSeries.setupLines.length > 0) {
+      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      sections.push(...singleInputSeries.setupLines);
+      sections.push("");
+    }
 
     sections.push(...[
-      `const a = [${formattedInputs}];`,
+      `const a = [${singleInputSeries.formattedValues}];`,
+      `const b = [${formattedOutputs}];`,
+      "",
+      'const help = require("./concept/helper");',
+      `help.singleValue(${variableName}, a, b);`,
+    ]);
+  } else {
+    const singleInputSeries = formatInputSeries(parsedInputs.values, {
+      stripAssignment: true,
+      buildBinaryTree: treeMetadata.hasBinaryTree && treeMetadata.paramNames.size <= 1,
+      builderPrefix: "b",
+    });
+
+    if (singleInputSeries.setupLines.length > 0) {
+      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      sections.push(...singleInputSeries.setupLines);
+      sections.push("");
+    }
+
+    sections.push(...[
+      `const a = [${singleInputSeries.formattedValues}];`,
       `const b = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
@@ -336,7 +413,73 @@ function parseInputExamples(inputValues) {
   }
 
   const firstExample = parsedExamples[0];
-  if (!firstExample || firstExample.length !== 2) {
+  if (!firstExample || firstExample.length === 0) {
+    return {
+      mode: "singleValue",
+      values: inputValues,
+    };
+  }
+
+  if (firstExample.length === 1) {
+    const [firstAssignment] = firstExample;
+    const values = [];
+
+    for (const example of parsedExamples) {
+      if (!example || example.length !== 1 || example[0].name !== firstAssignment.name) {
+        return {
+          mode: "singleValue",
+          values: inputValues,
+        };
+      }
+
+      values.push(example[0].value);
+    }
+
+    return {
+      mode: "singleNamedValue",
+      name: firstAssignment.name,
+      values,
+    };
+  }
+
+  if (firstExample.length === 3) {
+    const [firstName, secondName, thirdName] = firstExample.map((entry) => entry.name);
+    const firstValues = [];
+    const secondValues = [];
+    const thirdValues = [];
+
+    for (const example of parsedExamples) {
+      if (!example || example.length !== 3) {
+        return {
+          mode: "singleValue",
+          values: inputValues,
+        };
+      }
+
+      if (example[0].name !== firstName || example[1].name !== secondName || example[2].name !== thirdName) {
+        return {
+          mode: "singleValue",
+          values: inputValues,
+        };
+      }
+
+      firstValues.push(example[0].value);
+      secondValues.push(example[1].value);
+      thirdValues.push(example[2].value);
+    }
+
+    return {
+      mode: "threeValue",
+      firstName,
+      secondName,
+      thirdName,
+      firstValues,
+      secondValues,
+      thirdValues,
+    };
+  }
+
+  if (firstExample.length !== 2) {
     return {
       mode: "singleValue",
       values: inputValues,
@@ -368,9 +511,57 @@ function parseInputExamples(inputValues) {
 
   return {
     mode: "twoValue",
+    firstName,
+    secondName,
     firstValues,
     secondValues,
   };
+}
+
+function extractTreeMetadata(starterCode) {
+  const paramNames = new Set();
+  const paramPattern = /@param\s*\{\s*TreeNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
+  let match = paramPattern.exec(starterCode);
+
+  while (match) {
+    paramNames.add(match[1]);
+    match = paramPattern.exec(starterCode);
+  }
+
+  return {
+    hasBinaryTree: /\bTreeNode\b/.test(starterCode),
+    paramNames,
+  };
+}
+
+function formatInputSeries(values, options) {
+  const { stripAssignment, buildBinaryTree, builderPrefix } = options;
+
+  if (!buildBinaryTree || !values.every((value) => isArrayLikeInput(getRightHandValue(normalizeText(value))))) {
+    return {
+      setupLines: [],
+      formattedValues: values.map((value) => normalizeForCodeLiteral(value, stripAssignment)).join(", "),
+    };
+  }
+
+  const setupLines = [];
+  const refs = [];
+
+  values.forEach((value, index) => {
+    const refName = `${builderPrefix}${index + 1}`;
+    const arrayLiteral = normalizeForCodeLiteral(value, stripAssignment);
+    setupLines.push(`const ${refName} = buildBinaryTree(${arrayLiteral});`);
+    refs.push(refName);
+  });
+
+  return {
+    setupLines,
+    formattedValues: refs.join(", "),
+  };
+}
+
+function isArrayLikeInput(value) {
+  return /^\[[\s\S]*\]$/.test(value.trim());
 }
 
 function parseNamedAssignments(text) {
@@ -379,20 +570,40 @@ function parseNamedAssignments(text) {
     return null;
   }
 
-  const assignments = [];
-  for (const part of parts) {
-    const match = part.match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
-    if (!match) {
-      return null;
-    }
-
-    assignments.push({
-      name: match[1],
-      value: match[2].trim(),
-    });
+  // Single part: standard parsing or single unnamed value
+  if (parts.length === 1) {
+    const match = parts[0].match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    return match ? [{ name: match[1], value: match[2].trim() }] : null;
   }
 
-  return assignments;
+  // Multiple parts: allow mixed named/unnamed format
+  const assignments = [];
+  
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const match = part.match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    if (match) {
+      assignments.push({
+        name: match[1],
+        value: match[2].trim(),
+      });
+    } else {
+      // Generate a name based on position for unnamed parameters
+      assignments.push({
+        name: `_${i}`,
+        value: part.trim(),
+      });
+    }
+  }
+
+  // If we have at least 2 parts and at least one has an explicit name, treat as multi-valued
+  const hasExplicitName = assignments.some(a => !a.name.startsWith('_'));
+  if (parts.length >= 2 && hasExplicitName) {
+    return assignments;
+  }
+
+  // Otherwise, treat as single unnamed value
+  return null;
 }
 
 function splitTopLevelByComma(text) {
