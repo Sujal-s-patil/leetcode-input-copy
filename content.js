@@ -3,6 +3,9 @@ const BUTTON_ID = "leetcode-input-copy-button";
 const TOOLBAR_SELECTOR = "#ide-top-btns";
 const VARIABLE_SELECTOR = "span.mtk11";
 const DESCRIPTION_SELECTOR = ".elfjS, .elfjs, [data-track-load='description_content']";
+const PAIR_PATTERN = /(?:^\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
+const ASSIGNMENT_PATTERN = /^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
+const PARAM_PATTERN = /@param\s*\{\s*TreeNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
 let mountScheduled = false;
 
 init();
@@ -145,6 +148,8 @@ async function findExtractionTarget() {
 
 async function waitForElement(selector, timeoutMs = 2500) {
   const startTime = Date.now();
+  let pollDelay = 50;
+  const maxPollDelay = 200;
 
   while (Date.now() - startTime < timeoutMs) {
     const element = document.querySelector(selector) || findFirstDeep(selector);
@@ -152,7 +157,8 @@ async function waitForElement(selector, timeoutMs = 2500) {
       return element;
     }
 
-    await delay(100);
+    await delay(pollDelay);
+    pollDelay = Math.min(pollDelay + 25, maxPollDelay);
   }
 
   return null;
@@ -209,17 +215,15 @@ function findFallbackExampleBlocks() {
 }
 
 function dedupePairs(pairs) {
-  const seen = new Set();
+  const seen = new Map();
   const uniquePairs = [];
 
   for (const pair of pairs) {
-    const key = `${pair.input}\n---\n${pair.output}`;
-    if (seen.has(key)) {
-      continue;
+    const key = pair.input + "\n---\n" + pair.output;
+    if (!seen.has(key)) {
+      seen.set(key, true);
+      uniquePairs.push(pair);
     }
-
-    seen.add(key);
-    uniquePairs.push(pair);
   }
 
   return uniquePairs;
@@ -227,32 +231,35 @@ function dedupePairs(pairs) {
 
 function looksLikeExampleBlock(text) {
   const normalized = normalizeText(text);
-  return normalized.includes("Input:") && normalized.includes("Output:");
+  const inputIdx = normalized.indexOf("Input:");
+  return inputIdx !== -1 && normalized.indexOf("Output:", inputIdx) !== -1;
 }
 
 function removeNestedMatches(elements) {
-  return elements.filter((element) => {
-    return !elements.some((other) => other !== element && other.contains(element));
+  return elements.filter((element, index) => {
+    for (let i = 0; i < elements.length; i++) {
+      if (i !== index && elements[i].contains(element)) {
+        return false;
+      }
+    }
+    return true;
   });
 }
 
 function collectSearchRoots(startNode) {
-  const roots = [];
+  const roots = [startNode];
+  const visited = new WeakSet([startNode]);
   const queue = [startNode];
-  const visited = new Set();
+  let i = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || visited.has(current)) {
-      continue;
-    }
+  while (i < queue.length) {
+    const current = queue[i++];
+    if (!current.querySelectorAll) continue;
 
-    visited.add(current);
-    roots.push(current);
-
-    const elements = current.querySelectorAll ? current.querySelectorAll("*") : [];
-    for (const element of elements) {
-      if (element.shadowRoot) {
+    for (const element of current.querySelectorAll("*")) {
+      if (element.shadowRoot && !visited.has(element.shadowRoot)) {
+        visited.add(element.shadowRoot);
+        roots.push(element.shadowRoot);
         queue.push(element.shadowRoot);
       }
     }
@@ -276,16 +283,14 @@ function normalizeText(text) {
 function parseExampleBlocks(text) {
   const normalized = normalizeText(text);
   const pairs = [];
-  const pairPattern = /(?:^|\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
-  let match = pairPattern.exec(normalized);
+  let match;
+  PAIR_PATTERN.lastIndex = 0;
 
-  while (match) {
+  while ((match = PAIR_PATTERN.exec(normalized)) !== null) {
     pairs.push({
       input: match[1].trim(),
       output: match[2].trim(),
     });
-
-    match = pairPattern.exec(normalized);
   }
 
   return pairs;
@@ -520,12 +525,11 @@ function parseInputExamples(inputValues) {
 
 function extractTreeMetadata(starterCode) {
   const paramNames = new Set();
-  const paramPattern = /@param\s*\{\s*TreeNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
-  let match = paramPattern.exec(starterCode);
+  let match;
+  PARAM_PATTERN.lastIndex = 0;
 
-  while (match) {
+  while ((match = PARAM_PATTERN.exec(starterCode)) !== null) {
     paramNames.add(match[1]);
-    match = paramPattern.exec(starterCode);
   }
 
   return {
@@ -572,21 +576,23 @@ function parseNamedAssignments(text) {
 
   // Single part: standard parsing or single unnamed value
   if (parts.length === 1) {
-    const match = parts[0].match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    const match = ASSIGNMENT_PATTERN.exec(parts[0]);
     return match ? [{ name: match[1], value: match[2].trim() }] : null;
   }
 
   // Multiple parts: allow mixed named/unnamed format
   const assignments = [];
-  
+  let hasExplicitName = false;
+
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    const match = part.match(/^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/);
+    const match = ASSIGNMENT_PATTERN.exec(part);
     if (match) {
       assignments.push({
         name: match[1],
         value: match[2].trim(),
       });
+      hasExplicitName = true;
     } else {
       // Generate a name based on position for unnamed parameters
       assignments.push({
@@ -597,13 +603,7 @@ function parseNamedAssignments(text) {
   }
 
   // If we have at least 2 parts and at least one has an explicit name, treat as multi-valued
-  const hasExplicitName = assignments.some(a => !a.name.startsWith('_'));
-  if (parts.length >= 2 && hasExplicitName) {
-    return assignments;
-  }
-
-  // Otherwise, treat as single unnamed value
-  return null;
+  return (parts.length >= 2 && hasExplicitName) ? assignments : null;
 }
 
 function splitTopLevelByComma(text) {
@@ -670,7 +670,11 @@ function extractStarterCode() {
 
   const bestContainer = editorLineContainers
     .filter((container) => isElementVisible(container))
-    .sort((a, b) => b.querySelectorAll(".view-line").length - a.querySelectorAll(".view-line").length)[0];
+    .sort((a, b) => {
+      const aLen = a.querySelectorAll(".view-line").length;
+      const bLen = b.querySelectorAll(".view-line").length;
+      return bLen - aLen;
+    })[0];
 
   if (!bestContainer) {
     return "";
@@ -686,7 +690,7 @@ function extractStarterCode() {
     return text.replace(/\s+$/g, "");
   });
 
-  while (lines.length > 0 && lines[lines.length - 1] === "") {
+  while (lines.length > 0 && !lines[lines.length - 1]) {
     lines.pop();
   }
 
@@ -716,7 +720,7 @@ function getRightHandValue(value) {
 function toCodeLiteral(value) {
   const raw = value.trim();
   if (!raw) {
-    return '""';
+    return "\"\"";
   }
 
   if (looksLikeLiteral(raw)) {
@@ -727,17 +731,22 @@ function toCodeLiteral(value) {
 }
 
 function looksLikeLiteral(value) {
-  const quotedString = /^"(?:[^"\\]|\\.)*"$|^'(?:[^'\\]|\\.)*'$/;
-  const numberLiteral = /^-?(?:\d+|\d*\.\d+)(?:[eE][+-]?\d+)?$/;
-  const simpleKeyword = /^(?:true|false|null|undefined)$/;
-  const structured = /^(?:\[[\s\S]*\]|\{[\s\S]*\}|\([\s\S]*\))$/;
+  // Fast path: check first character
+  const firstChar = value[0];
+  if (firstChar === '"' || firstChar === "'") {
+    return /^["'](?:[^\\"']|\\.)*["']$/.test(value);
+  }
+  if (firstChar === "[" || firstChar === "{" || firstChar === "(") {
+    return true;
+  }
+  if (firstChar === "t" || firstChar === "f" || firstChar === "n" || firstChar === "u") {
+    return /^(?:true|false|null|undefined)$/.test(value);
+  }
+  if (firstChar === "-" || (firstChar >= "0" && firstChar <= "9")) {
+    return /^-?(?:\d+|\d*\.\d+)(?:[eE][+-]?\d+)?$/.test(value);
+  }
 
-  return (
-    quotedString.test(value) ||
-    numberLiteral.test(value) ||
-    simpleKeyword.test(value) ||
-    structured.test(value)
-  );
+  return false;
 }
 
 async function copyText(text) {
