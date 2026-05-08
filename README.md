@@ -50,6 +50,23 @@ const help = require("./concept/helper");
 help.singleValue(variableFromMtk11, a, b);
 ```
 
+For linked list problems whose starter code includes ListNode parameters, the extension now uses the same template style and converts array inputs to linked lists before invoking helpers. For example:
+
+```js
+const { arrayToLinkedList } = require("./concept/atol");
+const b1 = arrayToLinkedList([1, 2, 4]);
+const b2 = arrayToLinkedList([1, 3, 4]);
+const b3 = arrayToLinkedList([2, 6]);
+const b4 = arrayToLinkedList([5, 7]);
+
+const a = [b1, b3];
+const b = [b2, b4];
+const c = [[1, 1, 2, 3, 4, 4], [2, 5, 6, 7]];
+
+const help = require("./concept/helper");
+help.twoValue(variableFromMtk11, a, b,c);
+```
+
 ## Load in Brave
 
 1. Open `brave://extensions/`

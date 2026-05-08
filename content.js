@@ -6,6 +6,7 @@ const DESCRIPTION_SELECTOR = ".elfjS, .elfjs, [data-track-load='description_cont
 const PAIR_PATTERN = /(?:^|\n)\s*Input:\s*([\s\S]*?)\n\s*Output:\s*([\s\S]*?)(?=(?:\n\s*(?:Example\s*\d+:|Input:|Constraints:|Follow[- ]up:|Note:|Explanation:))|$)/gi;
 const ASSIGNMENT_PATTERN = /^([A-Za-z_$][\w$]*)\s*=\s*([\s\S]+)$/;
 const PARAM_PATTERN = /@param\s*\{\s*TreeNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
+const LIST_PARAM_PATTERN = /@param\s*\{\s*ListNode(?:\s*\[\s*\])?\s*\}\s*([A-Za-z_$][\w$]*)/g;
 let mountScheduled = false;
 
 init();
@@ -309,21 +310,31 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.firstName),
       builderPrefix: "treeA",
     });
     const secondInputSeries = formatInputSeries(parsedInputs.secondValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.secondName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.secondName),
       builderPrefix: "treeB",
     });
     const thirdInputSeries = formatInputSeries(parsedInputs.thirdValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.thirdName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.thirdName),
       builderPrefix: "treeC",
     });
 
     if (firstInputSeries.setupLines.length > 0 || secondInputSeries.setupLines.length > 0 || thirdInputSeries.setupLines.length > 0) {
-      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      if (firstInputSeries.usesBinaryTree || secondInputSeries.usesBinaryTree || thirdInputSeries.usesBinaryTree) {
+        sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      }
+
+      if (firstInputSeries.usesLinkedList || secondInputSeries.usesLinkedList || thirdInputSeries.usesLinkedList) {
+        sections.push('const { arrayToLinkedList } = require("./concept/atol");');
+      }
+
       sections.push(...firstInputSeries.setupLines, ...secondInputSeries.setupLines, ...thirdInputSeries.setupLines);
       sections.push("");
     }
@@ -341,16 +352,25 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.firstName),
       builderPrefix: "treeA",
     });
     const secondInputSeries = formatInputSeries(parsedInputs.secondValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.secondName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.secondName),
       builderPrefix: "treeB",
     });
 
     if (firstInputSeries.setupLines.length > 0 || secondInputSeries.setupLines.length > 0) {
-      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      if (firstInputSeries.usesBinaryTree || secondInputSeries.usesBinaryTree) {
+        sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      }
+
+      if (firstInputSeries.usesLinkedList || secondInputSeries.usesLinkedList) {
+        sections.push('const { arrayToLinkedList } = require("./concept/atol");');
+      }
+
       sections.push(...firstInputSeries.setupLines, ...secondInputSeries.setupLines);
       sections.push("");
     }
@@ -367,11 +387,19 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     const singleInputSeries = formatInputSeries(parsedInputs.values, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.name),
+      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.name),
       builderPrefix: "b",
     });
 
     if (singleInputSeries.setupLines.length > 0) {
-      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      if (singleInputSeries.usesBinaryTree) {
+        sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      }
+
+      if (singleInputSeries.usesLinkedList) {
+        sections.push('const { arrayToLinkedList } = require("./concept/atol");');
+      }
+
       sections.push(...singleInputSeries.setupLines);
       sections.push("");
     }
@@ -387,11 +415,19 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     const singleInputSeries = formatInputSeries(parsedInputs.values, {
       stripAssignment: true,
       buildBinaryTree: treeMetadata.hasBinaryTree && treeMetadata.paramNames.size <= 1,
+      buildLinkedList: treeMetadata.hasLinkedList && treeMetadata.listParamNames.size <= 1,
       builderPrefix: "b",
     });
 
     if (singleInputSeries.setupLines.length > 0) {
-      sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      if (singleInputSeries.usesBinaryTree) {
+        sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      }
+
+      if (singleInputSeries.usesLinkedList) {
+        sections.push('const { arrayToLinkedList } = require("./concept/atol");');
+      }
+
       sections.push(...singleInputSeries.setupLines);
       sections.push("");
     }
@@ -525,42 +561,58 @@ function parseInputExamples(inputValues) {
 
 function extractTreeMetadata(starterCode) {
   const paramNames = new Set();
+  const listParamNames = new Set();
   let match;
   PARAM_PATTERN.lastIndex = 0;
+  LIST_PARAM_PATTERN.lastIndex = 0;
 
   while ((match = PARAM_PATTERN.exec(starterCode)) !== null) {
     paramNames.add(match[1]);
   }
 
+  while ((match = LIST_PARAM_PATTERN.exec(starterCode)) !== null) {
+    listParamNames.add(match[1]);
+  }
+
   return {
     hasBinaryTree: /\bTreeNode\b/.test(starterCode),
+    hasLinkedList: /\bListNode\b/.test(starterCode),
     paramNames,
+    listParamNames,
   };
 }
 
 function formatInputSeries(values, options) {
-  const { stripAssignment, buildBinaryTree, builderPrefix } = options;
+  const { stripAssignment, buildBinaryTree, buildLinkedList, builderPrefix } = options;
 
-  if (!buildBinaryTree || !values.every((value) => isArrayLikeInput(getRightHandValue(normalizeText(value))))) {
+  const usesBinaryTree = buildBinaryTree && values.every((value) => isArrayLikeInput(getRightHandValue(normalizeText(value))));
+  const usesLinkedList = !usesBinaryTree && buildLinkedList && values.every((value) => isArrayLikeInput(getRightHandValue(normalizeText(value))));
+
+  if (!usesBinaryTree && !usesLinkedList) {
     return {
       setupLines: [],
       formattedValues: values.map((value) => normalizeForCodeLiteral(value, stripAssignment)).join(", "),
+      usesBinaryTree: false,
+      usesLinkedList: false,
     };
   }
 
   const setupLines = [];
   const refs = [];
+  const builderFunction = usesBinaryTree ? "buildBinaryTree" : "arrayToLinkedList";
 
   values.forEach((value, index) => {
     const refName = `${builderPrefix}${index + 1}`;
     const arrayLiteral = normalizeForCodeLiteral(value, stripAssignment);
-    setupLines.push(`const ${refName} = buildBinaryTree(${arrayLiteral});`);
+    setupLines.push(`const ${refName} = ${builderFunction}(${arrayLiteral});`);
     refs.push(refName);
   });
 
   return {
     setupLines,
     formattedValues: refs.join(", "),
+    usesBinaryTree,
+    usesLinkedList,
   };
 }
 
