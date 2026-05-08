@@ -33,8 +33,23 @@ function threeValue(func, a, b, c, d) {
     }
 }
 
+function multiValue(func, inputSeries, expected) {
+    if (!Array.isArray(inputSeries) || inputSeries.length === 0) {
+        throw new Error("multiValue expects a non-empty array of input arrays.");
+    }
+
+    const testCount = expected.length;
+
+    for (let i = 0; i < testCount; i++) {
+        const args = inputSeries.map((series) => series[i]);
+        const ans = func(...args);
+        compareAndLog(ans, expected[i]);
+    }
+}
+
 module.exports = {
     twoValue,
     singleValue,
     threeValue,
+    multiValue,
 };

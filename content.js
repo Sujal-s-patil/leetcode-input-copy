@@ -306,7 +306,39 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
     sections.push("");
   }
 
-  if (parsedInputs.mode === "threeValue") {
+  if (parsedInputs.mode === "namedMulti") {
+    const inputSeries = parsedInputs.names.map((name, index) => formatInputSeries(parsedInputs.valuesByIndex[index], {
+      stripAssignment: false,
+      buildBinaryTree: treeMetadata.paramNames.has(name),
+      buildLinkedList: treeMetadata.listParamNames.has(name),
+      builderPrefix: `p${index + 1}_`,
+    }));
+
+    if (inputSeries.some((series) => series.setupLines.length > 0)) {
+      if (inputSeries.some((series) => series.usesBinaryTree)) {
+        sections.push('const { buildBinaryTree } = require("./concept/atol");');
+      }
+
+      if (inputSeries.some((series) => series.usesLinkedList)) {
+        sections.push('const { arrayToLinkedList } = require("./concept/atol");');
+      }
+
+      sections.push(...inputSeries.flatMap((series) => series.setupLines));
+      sections.push("");
+    }
+
+    const inputVarNames = inputSeries.map((_, index) => getSeriesVariableName(index));
+    const outputVarName = getSeriesVariableName(inputSeries.length);
+
+    inputSeries.forEach((series, index) => {
+      sections.push(`const ${inputVarNames[index]} = [${series.formattedValues}];`);
+    });
+
+    sections.push(`const ${outputVarName} = [${formattedOutputs}];`);
+    sections.push("");
+    sections.push('const help = require("./concept/helper");');
+    sections.push(`help.multiValue(${variableName}, [${inputVarNames.join(", ")}], ${outputVarName});`);
+  } else if (parsedInputs.mode === "threeValue") {
     const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
       stripAssignment: false,
       buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
@@ -461,101 +493,33 @@ function parseInputExamples(inputValues) {
     };
   }
 
-  if (firstExample.length === 1) {
-    const [firstAssignment] = firstExample;
-    const values = [];
-
-    for (const example of parsedExamples) {
-      if (!example || example.length !== 1 || example[0].name !== firstAssignment.name) {
-        return {
-          mode: "singleValue",
-          values: inputValues,
-        };
-      }
-
-      values.push(example[0].value);
-    }
-
-    return {
-      mode: "singleNamedValue",
-      name: firstAssignment.name,
-      values,
-    };
-  }
-
-  if (firstExample.length === 3) {
-    const [firstName, secondName, thirdName] = firstExample.map((entry) => entry.name);
-    const firstValues = [];
-    const secondValues = [];
-    const thirdValues = [];
-
-    for (const example of parsedExamples) {
-      if (!example || example.length !== 3) {
-        return {
-          mode: "singleValue",
-          values: inputValues,
-        };
-      }
-
-      if (example[0].name !== firstName || example[1].name !== secondName || example[2].name !== thirdName) {
-        return {
-          mode: "singleValue",
-          values: inputValues,
-        };
-      }
-
-      firstValues.push(example[0].value);
-      secondValues.push(example[1].value);
-      thirdValues.push(example[2].value);
-    }
-
-    return {
-      mode: "threeValue",
-      firstName,
-      secondName,
-      thirdName,
-      firstValues,
-      secondValues,
-      thirdValues,
-    };
-  }
-
-  if (firstExample.length !== 2) {
-    return {
-      mode: "singleValue",
-      values: inputValues,
-    };
-  }
-
-  const [firstName, secondName] = firstExample.map((entry) => entry.name);
-  const firstValues = [];
-  const secondValues = [];
+  const names = firstExample.map((entry) => entry.name);
+  const valuesByIndex = names.map(() => []);
 
   for (const example of parsedExamples) {
-    if (!example || example.length !== 2) {
+    if (!example || example.length !== names.length) {
       return {
         mode: "singleValue",
         values: inputValues,
       };
     }
 
-    if (example[0].name !== firstName || example[1].name !== secondName) {
-      return {
-        mode: "singleValue",
-        values: inputValues,
-      };
-    }
+    for (let i = 0; i < names.length; i += 1) {
+      if (example[i].name !== names[i]) {
+        return {
+          mode: "singleValue",
+          values: inputValues,
+        };
+      }
 
-    firstValues.push(example[0].value);
-    secondValues.push(example[1].value);
+      valuesByIndex[i].push(example[i].value);
+    }
   }
 
   return {
-    mode: "twoValue",
-    firstName,
-    secondName,
-    firstValues,
-    secondValues,
+    mode: "namedMulti",
+    names,
+    valuesByIndex,
   };
 }
 
@@ -618,6 +582,19 @@ function formatInputSeries(values, options) {
 
 function isArrayLikeInput(value) {
   return /^\[[\s\S]*\]$/.test(value.trim());
+}
+
+function getSeriesVariableName(index) {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz";
+  let value = index;
+  let name = "";
+
+  do {
+    name = alphabet[value % 26] + name;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+
+  return name;
 }
 
 function parseNamedAssignments(text) {

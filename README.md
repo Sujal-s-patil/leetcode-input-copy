@@ -34,6 +34,19 @@ const help = require("./concept/helper");
 help.twoValue(variableFromMtk11, a, b,c);
 ```
 
+For problems with any number of named inputs (including 4+), the extension now generates one array per input and runs them through a generic helper:
+
+```js
+const a = [[1,2], [3,4]];
+const b = [2, 1];
+const c = [true, false];
+const d = [[5,6], [7,8]];
+const e = [expected1, expected2];
+
+const help = require("./concept/helper");
+help.multiValue(variableFromMtk11, [a, b, c, d], e);
+```
+
 The button is inserted to the right of the debugger controls and uses LeetCode's existing utility classes for styling.
 
 For binary tree problems whose starter code includes TreeNode parameters, the extension converts example array inputs into built tree instances before putting them into the helper input array. For example:
@@ -79,5 +92,6 @@ help.twoValue(variableFromMtk11, a, b,c);
 - The extension only runs on `leetcode.com` and `leetcode.cn`
 - The copied code uses the `.mtk11` text as a raw variable name
 - Arrays and numbers are copied as real JS values, not strings
+- Named examples with any input count are supported (1, 2, 3, 4+)
 - If copy or extraction fails, the page shows an alert with the error message
 - The extension no longer depends on clicking the extension icon
