@@ -12,27 +12,6 @@ function compareAndLog(result, expected) {
     const expectedDisplay = isArray ? `[${expected}]` : expected;
     console.log(`${color}${resultDisplay} <--> ${expectedDisplay}${RESET}`);
 }
-function twoValue(func, a, b, c) {
-    for (let i = 0; i < a.length; i++) {
-        const ans = func(a[i], b[i]);
-        compareAndLog(ans, c[i]);
-    }
-}
-
-function singleValue(func, a, b) {
-    for (let i = 0; i < a.length; i++) {
-        const ans = func(a[i]);
-        compareAndLog(ans, b[i]);
-    }
-}
-
-function threeValue(func, a, b, c, d) {
-    for (let i = 0; i < a.length; i++) {
-        const ans = func(a[i], b[i], c[i]);
-        compareAndLog(ans, d[i]);
-    }
-}
-
 function multiValue(func, inputSeries, expected) {
     if (!Array.isArray(inputSeries) || inputSeries.length === 0) {
         throw new Error("multiValue expects a non-empty array of input arrays.");
@@ -48,8 +27,5 @@ function multiValue(func, inputSeries, expected) {
 }
 
 module.exports = {
-    twoValue,
-    singleValue,
-    threeValue,
     multiValue,
 };

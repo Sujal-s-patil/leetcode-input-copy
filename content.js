@@ -378,19 +378,19 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
       `const d = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
-      `help.threeValue(${variableName}, a, b, c, d);`,
+      `help.multiValue(${variableName}, [a, b, c], d);`,
     ]);
   } else if (parsedInputs.mode === "twoValue") {
     const firstInputSeries = formatInputSeries(parsedInputs.firstValues, {
       stripAssignment: false,
-      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.firstName),
-      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.firstName),
+      buildBinaryTree: treeMetadata.paramNames.has(parsed.inputs.firstName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsed.inputs.firstName),
       builderPrefix: "treeA",
     });
-    const secondInputSeries = formatInputSeries(parsedInputs.secondValues, {
+    const secondInputSeries = formatInputSeries(parsed.inputs.secondValues, {
       stripAssignment: false,
-      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.secondName),
-      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.secondName),
+      buildBinaryTree: treeMetadata.paramNames.has(parsed.inputs.secondName),
+      buildLinkedList: treeMetadata.listParamNames.has(parsed.inputs.secondName),
       builderPrefix: "treeB",
     });
 
@@ -413,13 +413,13 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
       `const c = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
-      `help.twoValue(${variableName}, a, b,c);`,
+      `help.multiValue(${variableName}, [a, b], c);`,
     ]);
-  } else if (parsedInputs.mode === "singleNamedValue") {
-    const singleInputSeries = formatInputSeries(parsedInputs.values, {
+  } else if (parsed.inputs.mode === "singleNamedValue") {
+    const singleInputSeries = formatInputSeries(parsed.inputs.values, {
       stripAssignment: false,
-      buildBinaryTree: treeMetadata.paramNames.has(parsedInputs.name),
-      buildLinkedList: treeMetadata.listParamNames.has(parsedInputs.name),
+      buildBinaryTree: treeMetadata.paramNames.has(parsed.inputs.name),
+      buildLinkedList: treeMetadata.listParamNames.has(parsed.inputs.name),
       builderPrefix: "b",
     });
 
@@ -441,10 +441,10 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
       `const b = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
-      `help.singleValue(${variableName}, a, b);`,
+      `help.multiValue(${variableName}, [a], b);`,
     ]);
   } else {
-    const singleInputSeries = formatInputSeries(parsedInputs.values, {
+    const singleInputSeries = formatInputSeries(parsed.inputs.values, {
       stripAssignment: true,
       buildBinaryTree: treeMetadata.hasBinaryTree && treeMetadata.paramNames.size <= 1,
       buildLinkedList: treeMetadata.hasLinkedList && treeMetadata.listParamNames.size <= 1,
@@ -469,7 +469,7 @@ function buildClipboardText(starterCode, variableName, parsedInputs, outputValue
       `const b = [${formattedOutputs}];`,
       "",
       'const help = require("./concept/helper");',
-      `help.singleValue(${variableName}, a, b);`,
+      `help.multiValue(${variableName}, [a], b);`,
     ]);
   }
 
