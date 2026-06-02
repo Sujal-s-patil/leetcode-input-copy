@@ -1,97 +1,83 @@
-# LeetCode Input Copy
+# LeetCode Input Copy Extension
 
-This is a LeetCode-only browser extension for Brave or Chrome-compatible browsers.
+This is a browser extension for Chrome, Brave, and other Chromium-based browsers designed to streamline your local development workflow for LeetCode problems.
 
-## What it does
+## Overview
 
-When you open a LeetCode problem page, the extension adds a `Copy IO` button near the existing IDE buttons. Clicking that button:
+The extension adds a **Copy IO** button to LeetCode problem pages. When clicked, it intelligently extracts the problem's example inputs, outputs, and the starter code. It then generates a complete JavaScript snippet and copies it to your clipboard.
 
-- reads example `Input:` and `Output:` blocks from the description
-- reads the function name from `span.mtk11`
-- reads starter code from the Monaco editor
-- copies this generated code to the clipboard:
+This allows you to quickly paste the code into a local file, run it with Node.js, and start debugging with your own test cases almost instantly.
 
-```js
-/**
- * starter code from current editor
- */
+## Features
 
-const a = [[...],[...]];
-const b = [[...],[...]];
+-   **One-Click Test Case Generation**: Automatically creates a runnable script with all example cases.
+-   **Handles Multiple Inputs**: Correctly parses problems with single, multiple, named, or unnamed inputs.
+-   **Data Structure Support**: Automatically generates builder function calls for `TreeNode` (Binary Trees) and `ListNode` (Linked Lists).
+-   **Local Testing Ready**: The generated code is designed to work with the included `helper.js` file for easy test execution and validation.
 
-const help = require("./concept/helper");
-help.singleValue(variableFromMtk11, a, b);
+## How It Works
+
+When you click the **Copy IO** button, the extension performs the following actions:
+
+1.  **Extracts Examples**: It scans the problem description for all `Input:` and `Output:` blocks.
+2.  **Finds Function Name**: It identifies the name of the function you need to implement (e.g., `twoSum`).
+3.  **Reads Starter Code**: It pulls the boilerplate code directly from the LeetCode editor.
+4.  **Generates Script**: It assembles the extracted information into a JavaScript file. This script includes:
+    - The starter code.
+    - Arrays for each input parameter, populated with the example values.
+    - An array for the expected outputs.
+    - A call to the `multiValue` function from `helper.js` to run the tests.
+5.  **Copies to Clipboard**: The final script is copied to your clipboard, ready to be pasted into a local file.
+
+### Generated Code Example
+
+For a problem with two inputs (`nums` and `target`) and one output, the copied code will look like this:
+
+```javascript
+// Starter code from the LeetCode editor appears here
+var twoSum = function(nums, target) {
+    // ...
+};
+
+// Helper functions for creating data structures (if needed)
+// const { buildBinaryTree } = require("./concept/atol");
+
+// Input and output arrays are created from the examples
+const a = [[2,7,11,15], [3,2,4], [3,3]];
+const b = [9, 6, 6];
+const c = [[0,1], [1,2], [0,1]];
+
+// The helper file is required
+const help = require("./helper");
+
+// The multiValue function runs your code against the test cases
+help.multiValue(twoSum, [a, b], c);
 ```
 
-For examples that use exactly two named inputs (for example `Input: num1 = "2", num2 = "3"`), the extension now generates:
+## The `helper.js` Utility
 
-```js
-const a = ["2", "123"];
-const b = ["3", "456"];
-const c = ["6", "56088"];
+The `helper.js` file is a crucial part of this extension's workflow. It is a simple Node.js module designed to run the test cases and provide clear, color-coded feedback in your terminal.
 
-const help = require("./concept/helper");
-help.twoValue(variableFromMtk11, a, b,c);
-```
+**Location:** Make sure `helper.js` is in the same directory as the file where you paste the copied code, or adjust the `require` path accordingly.
 
-For problems with any number of named inputs (including 4+), the extension now generates one array per input and runs them through a generic helper:
+### `multiValue(func, inputSeries, expected)`
 
-```js
-const a = [[1,2], [3,4]];
-const b = [2, 1];
-const c = [true, false];
-const d = [[5,6], [7,8]];
-const e = [expected1, expected2];
+This is the primary function you will interact with.
 
-const help = require("./concept/helper");
-help.multiValue(variableFromMtk11, [a, b, c, d], e);
-```
+-   `func`: The function to be tested (e.g., `twoSum`).
+-   `inputSeries`: An array of arrays, where each inner array represents a series of inputs for one parameter. For example, `[[input1_case1, input1_case2], [input2_case1, input2_case2]]`.
+-   `expected`: An array of the expected outputs for each test case.
 
-The button is inserted to the right of the debugger controls and uses LeetCode's existing utility classes for styling.
+When you run the script, `multiValue` iterates through the test cases, calls your function with the appropriate inputs, and compares the result to the expected output.
 
-For binary tree problems whose starter code includes TreeNode parameters, the extension converts example array inputs into built tree instances before putting them into the helper input array. For example:
+-   **Green (`<-->`)**: Indicates the actual output matches the expected output.
+-   **Red (`<-->`)**: Indicates a mismatch.
 
-```js
-const { buildBinaryTree } = require("./concept/atol");
-const b1 = buildBinaryTree([2, 1, 3]);
-const b2 = buildBinaryTree([5, 1, 4, null, null, 3, 6]);
+## Installation
 
-const a = [b1, b2];
-const b = [true, false];
+1.  Open your browser's extensions page (`chrome://extensions` or `brave://extensions`).
+2.  Enable **Developer mode**.
+3.  Click **Load unpacked**.
+4.  Select the folder containing this extension's files (`manifest.json`, etc.).
 
-const help = require("./concept/helper");
-help.singleValue(variableFromMtk11, a, b);
-```
-
-For linked list problems whose starter code includes ListNode parameters, the extension now uses the same template style and converts array inputs to linked lists before invoking helpers. For example:
-
-```js
-const { arrayToLinkedList } = require("./concept/atol");
-const b1 = arrayToLinkedList([1, 2, 4]);
-const b2 = arrayToLinkedList([1, 3, 4]);
-const b3 = arrayToLinkedList([2, 6]);
-const b4 = arrayToLinkedList([5, 7]);
-
-const a = [b1, b3];
-const b = [b2, b4];
-const c = [[1, 1, 2, 3, 4, 4], [2, 5, 6, 7]];
-
-const help = require("./concept/helper");
-help.twoValue(variableFromMtk11, a, b,c);
-```
-
-## Load in Brave
-
-1. Open `brave://extensions/`
-2. Enable Developer mode
-3. Click Load unpacked
-4. Select this folder
-
-## Notes
-
-- The extension only runs on `leetcode.com` and `leetcode.cn`
-- The copied code uses the `.mtk11` text as a raw variable name
-- Arrays and numbers are copied as real JS values, not strings
-- Named examples with any input count are supported (1, 2, 3, 4+)
-- If copy or extraction fails, the page shows an alert with the error message
-- The extension no longer depends on clicking the extension icon
+The extension is now active and will add the **Copy IO** button on LeetCode problem pages.

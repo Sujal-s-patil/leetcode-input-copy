@@ -12,6 +12,64 @@ function compareAndLog(result, expected) {
     const expectedDisplay = isArray ? `[${expected}]` : expected;
     console.log(`${color}${resultDisplay} <--> ${expectedDisplay}${RESET}`);
 }
+
+class ListNode {
+    constructor(val, next = null) {
+        this.val = val;
+        this.next = next;
+    }
+}
+
+class TreeNode {
+    constructor(val) {
+        this.val = val;
+        this.left = null;
+        this.right = null;
+    }
+}
+
+function buildBinaryTree(arr) {
+    if (!arr.length) return null;
+
+    let root = new TreeNode(arr[0]);
+    let queue = [root];
+    let i = 1;
+
+    while (i < arr.length) {
+        let current = queue.shift();
+
+        if (current) {
+            if (arr[i] !== null && arr[i] !== undefined) {
+                current.left = new TreeNode(arr[i]);
+                queue.push(current.left);
+            }
+            i++;
+
+            if (i < arr.length && arr[i] !== null && arr[i] !== undefined) {
+                current.right = new TreeNode(arr[i]);
+                queue.push(current.right);
+            }
+            i++;
+        }
+    }
+
+    return root;
+}
+
+function arrayToLinkedList(arr) {
+    if (arr.length === 0) return null;
+
+    let dummy = new ListNode(0);
+    let current = dummy;
+
+    for (let num of arr) {
+        current.next = new ListNode(num);
+        current = current.next;
+    }
+
+    return dummy.next;
+}
+
 function multiValue(func, inputSeries, expected) {
     if (!Array.isArray(inputSeries) || inputSeries.length === 0) {
         throw new Error("multiValue expects a non-empty array of input arrays.");
@@ -28,4 +86,8 @@ function multiValue(func, inputSeries, expected) {
 
 module.exports = {
     multiValue,
+    buildBinaryTree,
+    arrayToLinkedList,
+    TreeNode,
+    ListNode,
 };
