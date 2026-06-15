@@ -5,14 +5,16 @@ const RESET = "\x1b[0m";
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 function compareAndLog(result, expected) {
-    const isArray = Array.isArray(expected);
-    const resultStr = isArray ? JSON.stringify(result) : String(result);
+    const normalized = normalizeForCompare(result, expected);
+    const isArray = Array.isArray(expected) || Array.isArray(normalized);
+    const resultStr = isArray ? JSON.stringify(normalized) : String(normalized);
     const expectedStr = isArray ? JSON.stringify(expected) : String(expected);
     const match = resultStr === expectedStr;
     const color = match ? GREEN : RED;
     const tag = match ? "PASS" : "FAIL";
 
     console.log(`${color}[${tag}] got: ${resultStr}  expected: ${expectedStr}${RESET}`);
+    return match;
 }
 
 // ─── Data structures ──────────────────────────────────────────────────────────
@@ -67,6 +69,55 @@ function arrayToLinkedList(arr) {
     return dummy.next;
 }
 
+// ─── Reverse converters (node -> array, for comparison against expected) ──────
+function linkedListToArray(node) {
+    const result = [];
+    while (node) {
+        result.push(node.val);
+        node = node.next;
+    }
+    return result;
+}
+
+function binaryTreeToArray(root) {
+    if (!root) return [];
+
+    const result = [];
+    const queue = [root];
+
+    while (queue.length) {
+        const node = queue.shift();
+        if (node) {
+            result.push(node.val);
+            queue.push(node.left ?? null);
+            queue.push(node.right ?? null);
+        } else {
+            result.push(null);
+        }
+    }
+
+    while (result.length && result[result.length - 1] === null) result.pop();
+    return result;
+}
+
+// ─── Shape detection ────────────────────────────────────────────────────────
+// Duck-typed on purpose: LeetCode solution files define their own ListNode/
+// TreeNode classes, so `instanceof` against this file's classes won't match.
+function isListNodeLike(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value) && "val" in value && "next" in value;
+}
+
+function isTreeNodeLike(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value) && "val" in value && "left" in value && "right" in value;
+}
+
+function normalizeForCompare(value, expected) {
+    if (value === null) return Array.isArray(expected) ? [] : value;
+    if (isTreeNodeLike(value)) return binaryTreeToArray(value);
+    if (isListNodeLike(value)) return linkedListToArray(value);
+    return value;
+}
+
 // ─── Test runner ──────────────────────────────────────────────────────────────
 function multiValue(func, inputSeries, expected) {
     if (!Array.isArray(inputSeries) || inputSeries.length === 0) {
@@ -78,9 +129,7 @@ function multiValue(func, inputSeries, expected) {
     for (let i = 0; i < total; i++) {
         const args = inputSeries.map((series) => series[i]);
         const result = func(...args);
-        const ok = JSON.stringify(result) === JSON.stringify(expected[i]);
-        compareAndLog(result, expected[i]);
-        if (ok) passed++;
+        if (compareAndLog(result, expected[i])) passed++;
     }
 
     const color = passed === total ? GREEN : RED;
@@ -92,6 +141,8 @@ module.exports = {
     multiValue,
     buildBinaryTree,
     arrayToLinkedList,
+    linkedListToArray,
+    binaryTreeToArray,
     TreeNode,
     ListNode,
 };
